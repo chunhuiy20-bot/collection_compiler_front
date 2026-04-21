@@ -19,8 +19,9 @@ const FIELD_META = [
       { value: -1, label: '警告缺失' },
       { value: 0, label: '待处理' },
       { value: 1, label: '处理中' },
-      { value: 2, label: '已完成' },
-      { value: 3, label: '已关闭' },
+      { value: 2, label: '处理已完成' },
+      { value: 3, label: '处理失败' },
+      { value: 4, label: '缺少处理数据' },
     ],
   },
 ];

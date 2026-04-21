@@ -6,14 +6,47 @@ import CaseDetailModal from '../components/cases/CaseDetailModal';
 import CaseEditModal from '../components/cases/CaseEditModal';
 import ExcelRecordDataModal from '../components/cases/ExcelRecordDataModal';
 import { listCasesPage, patchCaseDetail } from '../services/excelUploadService';
+import { PAGE_SIZE_OPTIONS } from '../constants/caseConfig';
+
+const CASES_PAGE_STORAGE_KEY = 'cases_page_state_v1';
+
+function readPersistedCasesPageState() {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  try {
+    const raw = window.localStorage.getItem(CASES_PAGE_STORAGE_KEY);
+    if (!raw) {
+      return null;
+    }
+    return JSON.parse(raw);
+  } catch (_error) {
+    return null;
+  }
+}
+
+function getInitialCasesPageState() {
+  const persisted = readPersistedCasesPageState();
+  const persistedPageSize = Number(persisted?.pageSize);
+  const persistedPage = Number(persisted?.currentPage);
+
+  return {
+    pageSize: PAGE_SIZE_OPTIONS.includes(persistedPageSize) ? persistedPageSize : 20,
+    currentPage: Number.isInteger(persistedPage) && persistedPage > 0 ? persistedPage : 1,
+    disposalType: typeof persisted?.disposalType === 'string' ? persisted.disposalType : '',
+    caseStatus: typeof persisted?.caseStatus === 'string' ? persisted.caseStatus : '',
+  };
+}
 
 function CasesPage() {
+  const initialState = useMemo(() => getInitialCasesPageState(), []);
   const [cases, setCases] = useState([]);
-  const [pageSize, setPageSize] = useState(20);
-  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(initialState.pageSize);
+  const [currentPage, setCurrentPage] = useState(initialState.currentPage);
   const [totalItems, setTotalItems] = useState(0);
-  const [disposalType, setDisposalType] = useState('');
-  const [caseStatus, setCaseStatus] = useState('');
+  const [disposalType, setDisposalType] = useState(initialState.disposalType);
+  const [caseStatus, setCaseStatus] = useState(initialState.caseStatus);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [refreshToken, setRefreshToken] = useState(0);
@@ -23,15 +56,35 @@ function CasesPage() {
   const [editingCase, setEditingCase] = useState(null);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
   const [excelRecordModalOpen, setExcelRecordModalOpen] = useState(false);
+  const [hasLoadedOnce, setHasLoadedOnce] = useState(false);
 
   const totalPages = useMemo(() => Math.max(1, Math.ceil(totalItems / pageSize)), [totalItems, pageSize]);
-  const safeCurrentPage = useMemo(() => Math.min(Math.max(currentPage, 1), totalPages), [currentPage, totalPages]);
+  const safeCurrentPage = useMemo(() => {
+    if (!hasLoadedOnce) {
+      return Math.max(currentPage, 1);
+    }
+    return Math.min(Math.max(currentPage, 1), totalPages);
+  }, [currentPage, totalPages, hasLoadedOnce]);
 
   useEffect(() => {
     if (safeCurrentPage !== currentPage) {
       setCurrentPage(safeCurrentPage);
     }
   }, [safeCurrentPage, currentPage]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const payload = {
+      pageSize,
+      currentPage,
+      disposalType,
+      caseStatus,
+    };
+    window.localStorage.setItem(CASES_PAGE_STORAGE_KEY, JSON.stringify(payload));
+  }, [pageSize, currentPage, disposalType, caseStatus]);
 
   useEffect(() => {
     let cancelled = false;
@@ -70,6 +123,7 @@ function CasesPage() {
       } finally {
         if (!cancelled) {
           setIsLoading(false);
+          setHasLoadedOnce(true);
         }
       }
     }

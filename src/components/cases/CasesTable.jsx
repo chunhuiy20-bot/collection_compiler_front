@@ -15,7 +15,8 @@ function disposalBadgeClass(type) {
 function statusTextClass(status) {
   if (status === 2) return 'text-green-600';
   if (status === 1) return 'text-yellow-600';
-  if (status === 3) return 'text-gray-500';
+  if (status === 4) return 'text-amber-600';
+  if (status === 3) return 'text-red-600';
   if (status === -2) return 'text-red-600';
   if (status === -1) return 'text-orange-600';
   return 'text-blue-600';
@@ -24,7 +25,8 @@ function statusTextClass(status) {
 function statusDotClass(status) {
   if (status === 2) return 'bg-green-500';
   if (status === 1) return 'bg-yellow-500 animate-pulse';
-  if (status === 3) return 'bg-gray-400';
+  if (status === 4) return 'bg-amber-500';
+  if (status === 3) return 'bg-red-500';
   if (status === -2) return 'bg-red-500';
   if (status === -1) return 'bg-orange-500';
   return 'bg-blue-500';

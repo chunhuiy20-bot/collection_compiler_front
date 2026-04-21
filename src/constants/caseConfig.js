@@ -1,10 +1,11 @@
-﻿export const CASE_STATUS_LABEL = {
+export const CASE_STATUS_LABEL = {
   '-2': '严重缺失',
   '-1': '警告缺失',
   0: '待处理',
   1: '处理中',
-  2: '已完成',
-  3: '已关闭',
+  2: '处理已完成',
+  3: '处理失败',
+  4: '缺少处理数据',
 };
 
 export const CASE_STATUS_OPTIONS = [
@@ -13,8 +14,9 @@ export const CASE_STATUS_OPTIONS = [
   { value: '-1', label: '警告缺失' },
   { value: '0', label: '待处理' },
   { value: '1', label: '处理中' },
-  { value: '2', label: '已完成' },
-  { value: '3', label: '已关闭' },
+  { value: '2', label: '处理已完成' },
+  { value: '3', label: '处理失败' },
+  { value: '4', label: '缺少处理数据' },
 ];
 
 export const DISPOSAL_TYPE_OPTIONS = [

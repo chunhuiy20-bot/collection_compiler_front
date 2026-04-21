@@ -1,8 +1,10 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { CASE_STATUS_LABEL } from '../../constants/caseConfig';
 import { CASE_STATUS_OPTIONS, DISPOSAL_TYPE_OPTIONS } from '../../constants/caseConfig';
 import { exportCasesByHash, listCasesByHash, listExcelFileRecords } from '../../services/excelUploadService';
 import { formatCurrency } from '../../utils/formatters';
+
+const EXCEL_RECORD_MODAL_STATE_KEY = 'excel_record_modal_state_v1';
 
 function formatFileSize(bytes) {
   const size = Number(bytes ?? 0);
@@ -19,40 +21,84 @@ function formatFileSize(bytes) {
   return `${value.toFixed(unitIndex === 0 ? 0 : 2)} ${units[unitIndex]}`;
 }
 
+function readPersistedModalState() {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+  try {
+    const raw = window.localStorage.getItem(EXCEL_RECORD_MODAL_STATE_KEY);
+    if (!raw) {
+      return null;
+    }
+    return JSON.parse(raw);
+  } catch (_error) {
+    return null;
+  }
+}
+
+function getInitialModalState() {
+  const persisted = readPersistedModalState();
+  const recordPage = Number(persisted?.recordPage);
+  const casesPage = Number(persisted?.casesPage);
+
+  return {
+    recordPage: Number.isInteger(recordPage) && recordPage > 0 ? recordPage : 1,
+    casesPage: Number.isInteger(casesPage) && casesPage > 0 ? casesPage : 1,
+    filterDisposalType: typeof persisted?.filterDisposalType === 'string' ? persisted.filterDisposalType : '',
+    filterCaseStatus: typeof persisted?.filterCaseStatus === 'string' ? persisted.filterCaseStatus : '',
+    selectedRecordHash: typeof persisted?.selectedRecordHash === 'string' ? persisted.selectedRecordHash : '',
+  };
+}
+
 function ExcelRecordDataModal({ open, onClose }) {
+  const initialState = useMemo(() => getInitialModalState(), []);
   const [recordItems, setRecordItems] = useState([]);
-  const [recordPage, setRecordPage] = useState(1);
+  const [recordPage, setRecordPage] = useState(initialState.recordPage);
   const [recordPageSize] = useState(20);
   const [recordTotal, setRecordTotal] = useState(0);
   const [recordLoading, setRecordLoading] = useState(false);
   const [selectedRecord, setSelectedRecord] = useState(null);
+  const [selectedRecordHash, setSelectedRecordHash] = useState(initialState.selectedRecordHash);
 
   const [casesItems, setCasesItems] = useState([]);
-  const [casesPage, setCasesPage] = useState(1);
+  const [casesPage, setCasesPage] = useState(initialState.casesPage);
   const [casesPageSize] = useState(20);
   const [casesTotal, setCasesTotal] = useState(0);
   const [casesLoading, setCasesLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [excludedCaseIds, setExcludedCaseIds] = useState([]);
-  const [filterDisposalType, setFilterDisposalType] = useState('');
-  const [filterCaseStatus, setFilterCaseStatus] = useState('');
-  const [casesJumpInput, setCasesJumpInput] = useState('1');
+  const [filterDisposalType, setFilterDisposalType] = useState(initialState.filterDisposalType);
+  const [filterCaseStatus, setFilterCaseStatus] = useState(initialState.filterCaseStatus);
+  const [casesJumpInput, setCasesJumpInput] = useState(String(initialState.casesPage));
   const [exporting, setExporting] = useState(false);
+  const hasInitializedSelectedHash = useRef(false);
 
   const recordTotalPages = useMemo(() => Math.max(1, Math.ceil(recordTotal / recordPageSize)), [recordTotal, recordPageSize]);
   const casesTotalPages = useMemo(() => Math.max(1, Math.ceil(casesTotal / casesPageSize)), [casesTotal, casesPageSize]);
 
   useEffect(() => {
     if (!open) {
+      hasInitializedSelectedHash.current = false;
       return;
     }
-    setRecordPage(1);
-    setCasesPage(1);
     setCasesItems([]);
-    setSelectedRecord(null);
     setErrorMessage('');
     setExcludedCaseIds([]);
   }, [open]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    const payload = {
+      recordPage,
+      casesPage,
+      filterDisposalType,
+      filterCaseStatus,
+      selectedRecordHash,
+    };
+    window.localStorage.setItem(EXCEL_RECORD_MODAL_STATE_KEY, JSON.stringify(payload));
+  }, [recordPage, casesPage, filterDisposalType, filterCaseStatus, selectedRecordHash]);
 
   useEffect(() => {
     let cancelled = false;
@@ -73,8 +119,8 @@ function ExcelRecordDataModal({ open, onClose }) {
         }
         setRecordItems(result.items);
         setRecordTotal(result.total);
-        if (!selectedRecord && result.items.length > 0) {
-          setSelectedRecord(result.items[0]);
+        if (result.page && result.page !== recordPage) {
+          setRecordPage(result.page);
         }
       } catch (error) {
         if (!cancelled) {
@@ -96,26 +142,65 @@ function ExcelRecordDataModal({ open, onClose }) {
   }, [open, recordPage, recordPageSize]);
 
   useEffect(() => {
+    if (!open || recordLoading) {
+      return;
+    }
+    if (recordItems.length === 0) {
+      setSelectedRecord(null);
+      setSelectedRecordHash('');
+      return;
+    }
+    const targetByHash = selectedRecordHash
+      ? recordItems.find((item) => String(item.file_hash) === String(selectedRecordHash))
+      : null;
+    const hasSelected = selectedRecord && recordItems.some((item) => String(item.id) === String(selectedRecord.id));
+    if (targetByHash) {
+      setSelectedRecord(targetByHash);
+      return;
+    }
+    if (!hasSelected) {
+      setSelectedRecord(recordItems[0]);
+      setSelectedRecordHash(String(recordItems[0].file_hash ?? ''));
+    }
+  }, [open, recordLoading, recordItems, selectedRecord, selectedRecordHash]);
+
+  useEffect(() => {
+    if (!selectedRecord?.file_hash) {
+      return;
+    }
+    setSelectedRecordHash(String(selectedRecord.file_hash));
+  }, [selectedRecord?.file_hash]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    if (!selectedRecord?.file_hash) {
+      return;
+    }
+    if (!hasInitializedSelectedHash.current) {
+      hasInitializedSelectedHash.current = true;
+      return;
+    }
     setCasesPage(1);
     setExcludedCaseIds([]);
     setFilterDisposalType('');
     setFilterCaseStatus('');
     setCasesJumpInput('1');
-  }, [selectedRecord?.file_hash]);
+  }, [open, selectedRecord?.file_hash]);
 
   useEffect(() => {
     setCasesJumpInput(String(casesPage));
   }, [casesPage]);
 
-  const filteredCases = useMemo(
-    () =>
-      casesItems.filter((item) => {
-        const disposalMatch = !filterDisposalType || item.disposal_type === filterDisposalType;
-        const statusMatch = filterCaseStatus === '' || Number(item.case_status) === Number(filterCaseStatus);
-        return disposalMatch && statusMatch;
-      }),
-    [casesItems, filterDisposalType, filterCaseStatus],
-  );
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+    setCasesPage(1);
+  }, [open, filterDisposalType, filterCaseStatus]);
+
+  const filteredCases = useMemo(() => casesItems, [casesItems]);
 
   const filteredCaseIds = useMemo(() => filteredCases.map((item) => String(item.id)), [filteredCases]);
   const checkedCountInFiltered = useMemo(
@@ -203,6 +288,8 @@ function ExcelRecordDataModal({ open, onClose }) {
           fileHash: selectedRecord.file_hash,
           page: casesPage,
           pageSize: casesPageSize,
+          disposalType: filterDisposalType,
+          caseStatus: filterCaseStatus,
         });
 
         if (cancelled) {
@@ -210,6 +297,9 @@ function ExcelRecordDataModal({ open, onClose }) {
         }
         setCasesItems(result.items);
         setCasesTotal(result.total);
+        if (result.page && result.page !== casesPage) {
+          setCasesPage(result.page);
+        }
       } catch (error) {
         if (!cancelled) {
           setCasesItems([]);
@@ -227,7 +317,7 @@ function ExcelRecordDataModal({ open, onClose }) {
     return () => {
       cancelled = true;
     };
-  }, [open, selectedRecord?.file_hash, casesPage, casesPageSize]);
+  }, [open, selectedRecord?.file_hash, casesPage, casesPageSize, filterDisposalType, filterCaseStatus]);
 
   if (!open) {
     return null;
@@ -383,13 +473,6 @@ function ExcelRecordDataModal({ open, onClose }) {
                       <tr>
                         <td colSpan={11} className="px-4 py-5 text-sm text-gray-500">
                           暂无数据
-                        </td>
-                      </tr>
-                    )}
-                    {!casesLoading && filteredCases.length === 0 && casesItems.length > 0 && (
-                      <tr>
-                        <td colSpan={11} className="px-4 py-5 text-sm text-gray-500">
-                          当前筛选条件下暂无数据
                         </td>
                       </tr>
                     )}

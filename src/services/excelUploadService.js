@@ -173,7 +173,7 @@ export async function listExcelFileRecords({ page = 1, pageSize = 20, fileType =
   };
 }
 
-export async function listCasesByHash({ fileHash, page = 1, pageSize = 20 } = {}) {
+export async function listCasesByHash({ fileHash, page = 1, pageSize = 20, disposalType, caseStatus } = {}) {
   if (!fileHash) {
     return {
       items: [],
@@ -188,6 +188,14 @@ export async function listCasesByHash({ fileHash, page = 1, pageSize = 20 } = {}
     page: String(page),
     page_size: String(pageSize),
   });
+
+  if (disposalType) {
+    params.set('disposal_type', String(disposalType));
+  }
+
+  if (caseStatus !== undefined && caseStatus !== null && caseStatus !== '') {
+    params.set('case_status', String(caseStatus));
+  }
 
   const response = await fetch(`${API_BASE_URL}${CASES_BY_HASH_ENDPOINT}?${params.toString()}`, {
     method: 'GET',
